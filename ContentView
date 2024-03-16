@@ -1,0 +1,186 @@
+import SwiftUI
+
+struct ContentView: View {
+    @State var firstNeurons: [Double] = [0,0]
+    @State var secondNeurons: [Double] = [0,0,0,0]
+    @State var output: Double = 0
+    
+    @State var firstWeights: [[Double]] = [[0,0],[0,0],[0,0],[0,0]]
+    @State var secondWeights: [Double] = [0,0,0,0]
+    @State var firstBiases: [Double] = [0,0,0,0]
+    @State var lastBias: Double = 0
+    
+    @State var derFirstWeights: [[Double]] = [[0,0],[0,0],[0,0],[0,0]]
+    @State var derSecondWeights: [Double] = [0,0,0,0]
+    @State var derFirstBiases: [Double] = [0,0,0,0]
+    @State var derLastBias: Double = 0
+    
+    @State var firstReLUs: [Double] = [0,0,0,0]
+    @State var lastReLU: Double = 0
+    
+    @State var codes: [[Double]] = []
+    @State var cost: Double = 0
+    @State var play = false
+    @State var xValue = ""
+    @State var yValue = ""
+    @State var realDistance: Double = 0
+    @State var guessedDistance: Double = 0
+    let timer = Timer.publish(every: 0.001, on: .main, in: .common).autoconnect()
+    var body: some View {
+        VStack {
+            TextField("x", text: $xValue)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .keyboardType(.decimalPad)
+            TextField("y", text: $yValue)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .keyboardType(.decimalPad)
+            Text("Real distance: \(realDistance)")
+            Text("Guessed distance: \(guessedDistance)")
+            Button(action: {
+                if let xVal = Double(xValue), let yVal = Double(yValue) {
+                    let distanceX = (xVal-0.5)
+                    let distanceY = (yVal-0.5)
+                    realDistance = sqrt(distanceX * distanceX + distanceY * distanceY)
+                    firstNeurons[0] = xVal
+                    firstNeurons[1] = yVal
+                    forward()
+                    guessedDistance = output
+                }
+                }) {
+                    Text("Guess")
+                }
+            
+            
+            Button(action: {
+                    self.play.toggle()
+                }) {
+                    Image(systemName: !play ? "play.circle.fill" : "pause.circle.fill")
+                        .foregroundColor(.black)
+                }
+            Text("codes.count: \(codes.count)")
+            Text("cost: \(cost)")
+            Text("First Layer Weights:")
+            ForEach(firstWeights[0], id: \.self) { item in
+                Text("\(item)")
+            }
+            ForEach(firstWeights[1], id: \.self) { item in
+                Text("\(item)")
+            }
+            ForEach(firstWeights[2], id: \.self) { item in
+                Text("\(item)")
+            }
+            ForEach(firstWeights[3], id: \.self) { item in
+                Text("\(item)")
+            }
+            Text("Second Layer Weights:")
+            ForEach(secondWeights, id: \.self) { item in
+                Text("\(item)")
+            }
+            Text("First Layer Biases")
+            ForEach(firstBiases, id: \.self) { item in
+                Text("\(item)")
+            }
+            Text("Second Layer Bias")
+            Text("\(lastBias)")
+        }
+        .onAppear {
+//            firstWeights = [[0.8051,-0.00003],[-0.8329,-0.0013],[-0.02,0.005],[0.01,0.2]]
+//            secondWeights = [0.9319,0.8972,-0.01,0.9]
+//            firstBiases = [-0.4795,0.3412,0.03,0.01]
+//            lastBias = 0.2593
+            
+            for i in 0..<firstWeights.count {
+                for j in 0..<firstWeights[i].count {
+                    firstWeights[i][j] = Double.random(in: -0.7...1.714)
+                }
+                secondWeights[i] = Double.random(in: -0.8...1.949)
+            }
+        }
+        .onReceive(timer) { _ in
+            if play {
+                if codes.count < 1000 {
+                    generate()
+                } else {
+                    cost = 0
+                    while codes.count > 0 {
+                        for i in 0...1 {
+                            firstNeurons[i] = codes[0][i]
+                        }
+                        forward()
+                        cost += (output - codes[0][2]) * (output - codes[0][2])
+                        backward()
+                        update()
+                        codes.remove(at: 0)
+                    }
+                    cost /= 1000
+                    for i in 0...1 {
+                        for j in 0...1 {
+                            derFirstWeights[i][j] /= 1000
+                        }
+                        derSecondWeights[i] /= 1000
+                        derFirstBiases[i] /= 1000
+                    }
+                    derLastBias /= 1000
+                }
+            }
+        }
+    }
+    func generate() {
+        let x = Double.random(in: 0...1)
+        let y = Double.random(in: 0...1)
+        let distance = sqrt((x-0.5) * (x-0.5) + (y-0.5) * (y-0.5))
+        codes.append([x, y, distance])
+    }
+    func forward() {
+        secondNeurons = [0,0,0,0]
+        output = 0
+        derFirstWeights = [[0,0],[0,0],[0,0],[0,0]]
+        derSecondWeights = [0,0,0,0]
+        derFirstBiases = [0,0,0,0]
+        derLastBias = 0
+        for i in 0..<secondNeurons.count {
+            for j in 0...1 {
+                secondNeurons[i] += firstNeurons[j] * firstWeights[i][j]
+            }
+            secondNeurons[i] += firstBiases[i]
+            if secondNeurons[i] < 0 {
+                secondNeurons[i] = 0
+                firstReLUs[i] = 0
+            } else {
+                firstReLUs[i] = 1
+            }
+            output += secondNeurons[i] * secondWeights[i]
+        }
+        output += lastBias
+        if output < 0 {
+            output = 0
+            lastReLU = 0
+        } else {
+            lastReLU = 1
+        }
+    }
+    func backward() {
+        // second layer
+        for i in 0..<secondNeurons.count {
+            derSecondWeights[i] += 2 * (output - codes[0][2]) * lastReLU * secondNeurons[i]
+        }
+        derLastBias += 2 * (output - codes[0][2]) * lastReLU
+        // first layer
+        for i in 0..<secondNeurons.count {
+            for j in 0...1 {
+                derFirstWeights[i][j] += 2 * (output - codes[0][2]) * lastReLU * secondWeights[i] * firstReLUs[i] * firstNeurons[j]
+            }
+            derFirstBiases[i] += 2 * (output - codes[0][2]) * lastReLU * secondWeights[i] * firstReLUs[i]
+        }
+    }
+    func update() {
+        for i in 0..<secondNeurons.count {
+            for j in 0...1 {
+                firstWeights[i][j] -= 0.001 * derFirstWeights[i][j]
+            }
+            firstBiases[i] -= 0.001 * derFirstBiases[i]
+            secondWeights[i] -= 0.001 * derSecondWeights[i]
+        }
+        lastBias -= 0.001 * derLastBias
+    }
+}
